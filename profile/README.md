@@ -16,7 +16,7 @@
 <p><strong>Fully on-chain, multi-outcome prediction markets on Sui.</strong></p>
 
 <p>
-  Trade outcome shares, provide liquidity, and redeem <code>1:1</code> against collateral —<br/>
+  Trade outcome shares, provide liquidity, and settle against collateral —<br/>
   settled entirely in Move. Non-custodial. Fully collateralized. Permissionless.
 </p>
 
@@ -82,11 +82,11 @@ Markets, AMM, resolution, and disputes live in a **single Move package** on Sui.
 
 #### 🔒 Non-custodial
 Shares and collateral live in contracts you interact with directly. Only winning
-shares are ever redeemable — **1:1** against the vault.
+shares are ever redeemable — **parimutuel** against the finalize-time collateral snapshot.
 
 #### 🛡️ Fully collateralized
-Vault collateral always equals one complete set of shares, so redemption can
-**never** be underfunded.
+The complete-set invariant guarantees that the total winning shares at resolution equals
+the trader-staked collateral, so parimutuel winner payouts can **never** be underfunded.
 
 </td>
 <td width="50%" valign="top">
@@ -110,14 +110,7 @@ against a real **Pyth** reading — no human oracle required.
 
 <br/>
 
-A market holds a pool of USDC (or any Sui coin) collateral. When you buy shares of an
-outcome, collateral enters the vault and a **complete set** of shares is minted (one of
-every outcome); the constant-product AMM prices the shares so the pool always implies a
-probability for each outcome. When the event ends, a registered oracle proposes the
-winning outcome and a dispute window opens. If no successful dispute occurs, the outcome
-is finalized and every holder of winning shares can redeem them **1:1** for the
-collateral. A small fee is taken on each trade and routed to the protocol treasury and
-the market creator.
+A market holds a pool of USDC (or any Sui coin) collateral, seeded with a **fixed 10,000-unit** creator deposit ring-fenced in a `seed_vault`. When you buy shares of an outcome, collateral enters the vault and a **complete set** of shares is minted (one of every outcome); the constant-product AMM prices the shares so the pool always implies a probability for each outcome. When the event ends, a registered oracle proposes the winning outcome and a dispute window opens. If no successful dispute occurs, the outcome is finalized, the creator's seed is **auto-refunded in full** from the ring-fenced vault, and holders of winning shares settle **parimutuel** — they split the remaining trader-staked collateral pro-rata by winning-share weight. A fixed protocol fee and creator fee are taken on each trade and routed to the protocol treasury and the market creator; fees never enter the vault.
 
 </details>
 
@@ -209,14 +202,17 @@ at all times:
 ```
 
 When the market resolves, exactly one outcome wins. Each complete set contributes
-exactly one winning share, so:
+exactly one winning share, so the global complete-set invariant implies:
 
 ```
 winning_shares_in_circulation  ==  collateral_in_vault
 ```
 
-Therefore **redemption is always fully collateralized 1:1**. Fees are taken *out* of the
-trader's payment and **never** enter the vault, so share backing can never be diluted.
+Fees are taken *out* of the trader's payment and **never** enter the vault, so share
+backing can never be diluted. At settlement, winners are paid **parimutuel**: they split
+the trader-staked collateral snapshot pro-rata by winning-share weight, so total payouts
+are always bounded by the collateral that traders actually deposited and the ring-fenced
+creator seed is never drawn on.
 
 <br/>
 
@@ -230,8 +226,9 @@ stateDiagram-v2
     RESOLVING --> DISPUTED : raise_dispute
     DISPUTED --> RESOLVING : window re-extends
     RESOLVING --> RESOLVED : finalize_resolution
-    DISPUTED --> RESOLVED : admin finalize
-    RESOLVED --> [*] : redeem_shares (1:1)
+    DISPUTED --> RESOLVED : finalize (any caller; outcome bound by dispute consensus)
+    RESOLVED --> [*] : redeem_shares (parimutuel winner settlement)
+    TRADING --> ABANDONED : reclaim_abandoned_seed (30d past ends_at, never resolved)
 ```
 
 | Status | Code | Meaning |
@@ -241,10 +238,12 @@ stateDiagram-v2
 | `STATUS_RESOLVING` | `2` | Oracle proposed an outcome; dispute window open. |
 | `STATUS_RESOLVED` | `3` | Final outcome locked; shares redeemable. |
 | `STATUS_DISPUTED` | `4` | At least one dispute raised; window re-extended. |
+| `STATUS_ABANDONED` | `5` | Never resolved past grace window; creator seed reclaimable by anyone. |
 
 > A **closing-only window** opens at `closing_only_at = ends_at − closing_only_window_ms`.
 > After that, opening new positions is disallowed; only position-reducing close-out
-> trades are permitted, at a discounted protocol fee.
+> trades are permitted, at the `maker_rebate_bps`-discounted protocol fee (rebate comes
+> from governance, not a fixed value).
 
 <br/>
 
@@ -265,8 +264,9 @@ stateDiagram-v2
 **2 · Price-backed (Up/Down/Push)**
 
 Outcomes `["Up","Down","Push"]` with a `PriceFeedConfig`. Auto-resolves against a real
-asset price at `ends_at`. A tie within tolerance resolves as **Push** and refunds *both*
-Up and Down shares 1:1 (market void).
+asset price at `ends_at`. A tie within tolerance resolves as **Push** (market void);
+Up and Down holders are refunded **pro-rata** from the collateral snapshot taken at
+finalize — 1:1 refund of both legs is not solvent with a single complete-set backing.
 
 </td>
 </tr>
@@ -280,7 +280,25 @@ Up and Down shares 1:1 (market void).
   with resolution & redemption. This is what the frontend uses.
 - **CLOB order book (optional, parallel)** — `order_book.move` is an independent
   price-time limit-order book whose positions are *not* reconciled with the AMM and do
-  not affect the 1:1 backing invariant.
+  not affect the 1:1 backing invariant. Resolution/redemption integration is a future
+  extension.
+
+<br/>
+
+### Market creation
+
+Every market is created with a **fixed 10,000-unit** creator seed (e.g. 10,000 USDC),
+ring-fenced in a `seed_vault` that is never touched by traders. The seed is
+**auto-refunded in full** to the creator at finalize time, before any winner payouts,
+so the creator's principal is always safe regardless of outcome. Markets must satisfy:
+
+- **2–64 outcomes** (up to 64 for oracle-resolved markets; 3 fixed outcomes for price markets).
+- **Duration**: minimum 1 hour, maximum ~1 year from creation.
+- **Category and question** length caps (`MAX_CATEGORY_LEN = 64`, `MAX_QUESTION_LEN = 512`).
+- **Outcome label** length cap (`MAX_OUTCOME_LABEL_LEN = 128`).
+
+The `creator_fee_bps` argument is accepted but **ignored** — the creator fee is locked
+at 0.25% (25 bps) for every market.
 
 <br/>
 
@@ -292,10 +310,11 @@ collateral vault, so backing is never diluted.
 | Fee | Default | Bound | Paid to |
 | --- | :---: | :---: | --- |
 | `protocol_fee_bps` | 75 (0.75%) | ≤ 1000 | Treasury |
-| `creator_fee_bps` |  25 (0.25%) | ≤ 300 | Market creator |
-| `referral_fee_bps` | 50 (0.50%) | ≤ 500 | Referrer |
+| `creator_fee_bps` | 25 (0.25%) | FIXED | Market creator |
 | `dispute_bond_bps` | 100 (1.00%) | ≤ 1000 | Bond (returned/forfeited) |
-| `maker_rebate_bps` | 5000 (50%) | ≤ 10000 | Close-out discount |
+| `maker_rebate_bps` | governance | ≤ 10000 | Close-out discount |
+
+> **Note:** `creator_fee_bps` is **locked at 0.25% (25 bps)** for every market; the `creator_fee_bps` argument on market creation is accepted but always ignored. Referral fees are **not implemented** — the `referrer` field is accepted but never recorded and no referral slice is taken.
 
 > See the [Fees reference](./OddsZero_Docs/protocol/fees.md) for the exact buy/sell split formulas.
 
@@ -304,21 +323,26 @@ collateral vault, so backing is never diluted.
 ### Resolution, disputes & redemption
 
 1. **Propose** — a registered oracle calls `resolve_market` (or `resolve_market_price` for
-   price markets), opening the dispute window.
-2. **Dispute** — anyone except the oracle/creator may `raise_dispute` by posting a bond.
-   The window re-extends on each dispute.
-3. **Finalize** — after the window, `finalize_resolution` locks the outcome. If disputes
-   exist, only the admin may finalize (escalation).
-4. **Redeem** — holders call `redeem_shares` to convert winning shares to collateral 1:1.
+   price markets), which opens the dispute window.
+2. **Dispute** — anyone may `raise_dispute` by posting a bond. Disputes from the oracle or
+   creator are recorded but ignored for consensus. The window re-extends on each dispute
+   (up to `MAX_DISPUTES = 10`).
+3. **Finalize** — after the window, `finalize_resolution` (or `finalize_price_resolution`
+   for disputed price markets) locks the outcome. Any caller may finalize; when disputes
+   exist and agree on a claimed outcome, that outcome is binding for all callers including
+   the admin.
+4. **Redeem** — holders call `redeem_shares` to claim their parimutuel share of the
+   finalize-time collateral snapshot, pro-rata by winning-share weight. For Push (tie)
+   voids, Up and Down holders split the snapshot pro-rata.
 
 <br/>
 
 ### Governance
 
 A single shared `Governance` object holds global parameters. Markets **snapshot** relevant
-values at creation, so global changes affect only new markets. DAO voting uses transferable
-`GovernanceShare` objects; a proposal needs quorum + majority before `execute_proposal`
-applies it.
+values at creation, so global changes affect only new markets. The admin may update parameters
+directly; DAO voting using transferable `GovernanceShare` objects is also available — a
+proposal needs quorum + majority before `execute_proposal` applies it.
 
 <br/>
 
@@ -483,10 +507,17 @@ npm run seed:contracts   # seed sample markets (frontend/seedMarkets.mjs)
 
 OddsZero is designed around a small set of auditable invariants:
 
-- ✅ The **complete-set** invariant guarantees 1:1 redemption is always fully funded.
+- ✅ The **complete-set** invariant guarantees winner payouts are always fully backed by the
+  trader-staked collateral snapshot taken at finalize.
+- ✅ **Ring-fenced `seed_vault`**: the creator's seed is escrowed separately and auto-refunded
+  in full at finalize, before any winner payouts, so the seed is never at risk.
+- ✅ **Parimutuel winner settlement**: winners split the finalize-time collateral snapshot
+  pro-rata by winning-share weight, so total payouts can never exceed the collateral
+  traders deposited.
 - ✅ **Fees never enter the vault**, so backing can never be diluted.
 - ✅ **Capability-based access control** (`AdminCap` — non-copyable / non-drop / non-transferable) gates privileged calls; oracles are registered in `AdminRegistry`.
-- ✅ **Dispute bonds** and admin-only escalation prevent oracle self-dealing.
+- ✅ **Dispute bonds** and dispute-consensus binding prevent oracle self-dealing and ensure
+  the final outcome reflects the economic signal of independent disputants.
 
 For the full threat model, invariant catalog, and audit checklist, see:
 
@@ -508,7 +539,7 @@ For the full threat model, invariant catalog, and audit checklist, see:
 | --- | --- |
 | Package name | `oddszero` |
 | Language | Move (edition 2024) |
-| Collateral | Native USDC (6 decimals) — or any Sui coin type `T` |
+| Collateral | Native USDC (protocol whole-unit convention: 1 unit = 1 USDC; 6-decimal base units at the coin boundary are handled by the wrapper) — or any Sui coin type `T` |
 | Testnet package id | [`0x37573a1060e150e2cbc48ea310e1a05b859dd18541344ffe1c2e304fee702916`](https://suiscan.xyz/testnet/object/0x37573a1060e150e2cbc48ea310e1a05b859dd18541344ffe1c2e304fee702916) |
 | Toolchain | Sui CLI `1.74.1` |
 | Explorer | [suiscan.xyz/testnet](https://suiscan.xyz/testnet) |
