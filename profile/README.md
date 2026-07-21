@@ -24,33 +24,6 @@
 
 <!-- ── Badges ─────────────────────────────────────────────── -->
 
-<p>
-  <img alt="Move 2024" src="https://img.shields.io/badge/Move-edition%202024-4B8BF5?style=for-the-badge&logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0iI2ZmZiI+PHBhdGggZD0iTTEyIDJMMiA3djEwbDEwIDUgMTAtNVY3TDEyIDJ6Ii8+PC9zdmc+" />
-  <img alt="Sui" src="https://img.shields.io/badge/Sui-Testnet-6FBCF0?style=for-the-badge&logo=sui&logoColor=white" />
-  <img alt="Next.js 14" src="https://img.shields.io/badge/Next.js-14-000000?style=for-the-badge&logo=nextdotjs&logoColor=white" />
-  <img alt="Pyth" src="https://img.shields.io/badge/Oracle-Pyth-8247E5?style=for-the-badge" />
-  <img alt="License MIT" src="https://img.shields.io/badge/License-MIT-22C55E?style=for-the-badge" />
-</p>
-
-<p>
-  <img alt="Non-custodial" src="https://img.shields.io/badge/non--custodial-100%25-16A34A?style=flat-square" />
-  <img alt="Collateralized" src="https://img.shields.io/badge/backing-1:1_fully_collateralized-16A34A?style=flat-square" />
-  <img alt="Modules" src="https://img.shields.io/badge/Move_modules-14-4B8BF5?style=flat-square" />
-  <img alt="Outcomes" src="https://img.shields.io/badge/outcomes-2%E2%80%9364_per_market-4B8BF5?style=flat-square" />
-</p>
-
-<br/>
-
-<h1>OddsZero</h1>
-
-<p><strong>Fully on-chain, multi-outcome prediction markets on Sui.</strong></p>
-
-<p>
-  Trade outcome shares, provide liquidity, and redeem <code>1:1</code> against collateral —<br/>
-  settled entirely in Move. Non-custodial. Fully collateralized. Permissionless.
-</p>
-
-<br/>
 
 <!-- ── Badges ─────────────────────────────────────────────── -->
 
@@ -220,58 +193,6 @@ flowchart TB
 
 <!-- ============================================================= -->
 
-## 🚀 Quick Start
-
-### Prerequisites
-
-| Requirement | Notes |
-| --- | --- |
-| **Sui CLI** ≥ 1.30 | Install from the [official guide](https://docs.sui.io/guides/developer/getting-started/sui-install) |
-| **Node.js** ≥ 20 + npm | JavaScript toolchain |
-| **Sui environment** | `sui client envs` · `sui client switch --env testnet` |
-| **Funded address** | For publishing — `sui client active-address` |
-
-<br/>
-
-### 1 · Run the full dApp locally
-
-The fastest way to bring up everything (backend indexer + Next.js frontend):
-
-```bash
-cd sui-predict
-npm install            # install root + workspace deps (or per-folder)
-npm run dev            # dev-all.mjs → backend :4000 + frontend :3000
-```
-
-> 🌐 Then open **<http://localhost:3000>**
-
-<br/>
-
-### 2 · Build & test the smart contracts
-
-```bash
-cd sui-predict/contracts
-sui move build         # compile
-sui move test          # run Move unit + e2e tests
-sui move lint          # Move 2024 linter
-```
-
-<br/>
-
-### 3 · Publish to Sui (testnet)
-
-```bash
-cd sui-predict/contracts
-sui client publish --gas-budget 100000000
-```
-
-Record the new **package ID** and the shared object IDs
-(`MarketRegistry`, `AdminRegistry`, `Governance`, `Treasury`, `IncentiveVault`).
-Then initialize protocol objects and seed sample markets — see the
-[Deployment Guide](./OddsZero_Docs/guides/deployment.md) and `contracts/README.md`
-for the exact calls.
-
-<br/>
 
 <!-- ============================================================= -->
 
@@ -370,8 +291,8 @@ collateral vault, so backing is never diluted.
 
 | Fee | Default | Bound | Paid to |
 | --- | :---: | :---: | --- |
-| `protocol_fee_bps` | 100 (1.00%) | ≤ 1000 | Treasury |
-| `creator_fee_bps` | set by creator | ≤ 300 | Market creator |
+| `protocol_fee_bps` | 75 (0.75%) | ≤ 1000 | Treasury |
+| `creator_fee_bps` |  25 (0.25%) | ≤ 300 | Market creator |
 | `referral_fee_bps` | 50 (0.50%) | ≤ 500 | Referrer |
 | `dispute_bond_bps` | 100 (1.00%) | ≤ 1000 | Bond (returned/forfeited) |
 | `maker_rebate_bps` | 5000 (50%) | ≤ 10000 | Close-out discount |
